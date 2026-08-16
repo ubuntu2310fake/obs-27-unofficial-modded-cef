@@ -511,12 +511,27 @@ static void ffmpeg_mux_header(struct ffmpeg_mux *ffm, uint8_t *data,
 	}
 }
 
-static size_t safe_read(void *vdata, size_t size)
+static inline size_t safe_read(void *vdata, size_t size)
 {
 	uint8_t *data = vdata;
 	size_t total = size;
 
+#ifdef _WIN32
+	HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+#endif
+
 	while (size > 0) {
+#ifdef _WIN32
+		DWORD in_size = 0;
+		BOOL ret = ReadFile(hStdin, data, (DWORD)size, &in_size, NULL);
+		if (!ret || in_size == 0) {
+			if (debug_log_file_global) {
+				fprintf(debug_log_file_global, "safe_read failed: ReadFile returned %d, in_size=%lu, GetLastError=%lu\n", ret, in_size, GetLastError());
+				fflush(debug_log_file_global);
+			}
+			return 0;
+		}
+#else
 		size_t in_size = fread(data, 1, size, stdin);
 		if (in_size == 0) {
 			if (debug_log_file_global) {
@@ -525,6 +540,7 @@ static size_t safe_read(void *vdata, size_t size)
 			}
 			return 0;
 		}
+#endif
 
 		size -= in_size;
 		data += in_size;
@@ -536,7 +552,16 @@ static size_t safe_read(void *vdata, size_t size)
 static bool ffmpeg_mux_get_header(struct ffmpeg_mux *ffm)
 {
 	struct ffm_packet_info info;
-	if (debug_log_file_global) { fprintf(debug_log_file_global, "ffmpeg_mux_get_header: calling safe_read for info\n"); fflush(debug_log_file_global); }
+	if (debug_log_file_global) { 
+#ifdef _WIN32
+		HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+		DWORD fileType = GetFileType(hStdin);
+		fprintf(debug_log_file_global, "ffmpeg_mux_get_header: calling safe_read for info. GetStdHandle(STD_INPUT_HANDLE)=%p, GetFileType=%lu, _fileno(stdin)=%d\n", hStdin, fileType, _fileno(stdin)); 
+#else
+		fprintf(debug_log_file_global, "ffmpeg_mux_get_header: calling safe_read for info\n"); 
+#endif
+		fflush(debug_log_file_global); 
+	}
 	bool success = safe_read(&info, sizeof(info)) == sizeof(info);
 	if (debug_log_file_global) { fprintf(debug_log_file_global, "ffmpeg_mux_get_header: safe_read for info success=%d, size=%u\n", success, success ? info.size : 0); fflush(debug_log_file_global); }
 	
