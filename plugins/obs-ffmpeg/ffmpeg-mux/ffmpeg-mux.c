@@ -535,15 +535,20 @@ static size_t safe_read(void *vdata, size_t size)
 
 static bool ffmpeg_mux_get_header(struct ffmpeg_mux *ffm)
 {
-	struct ffm_packet_info info = {0};
-
+	struct ffm_packet_info info;
+	if (debug_log_file_global) { fprintf(debug_log_file_global, "ffmpeg_mux_get_header: calling safe_read for info\n"); fflush(debug_log_file_global); }
 	bool success = safe_read(&info, sizeof(info)) == sizeof(info);
+	if (debug_log_file_global) { fprintf(debug_log_file_global, "ffmpeg_mux_get_header: safe_read for info success=%d, size=%u\n", success, success ? info.size : 0); fflush(debug_log_file_global); }
+	
 	if (success) {
 		uint8_t *data = malloc(info.size);
 
+		if (debug_log_file_global) { fprintf(debug_log_file_global, "ffmpeg_mux_get_header: calling safe_read for data of size %u\n", info.size); fflush(debug_log_file_global); }
 		if (safe_read(data, info.size) == info.size) {
+			if (debug_log_file_global) { fprintf(debug_log_file_global, "ffmpeg_mux_get_header: calling ffmpeg_mux_header\n"); fflush(debug_log_file_global); }
 			ffmpeg_mux_header(ffm, data, &info);
 		} else {
+			if (debug_log_file_global) { fprintf(debug_log_file_global, "ffmpeg_mux_get_header: safe_read for data failed\n"); fflush(debug_log_file_global); }
 			success = false;
 		}
 
@@ -555,18 +560,24 @@ static bool ffmpeg_mux_get_header(struct ffmpeg_mux *ffm)
 
 static inline bool ffmpeg_mux_get_extra_data(struct ffmpeg_mux *ffm)
 {
+	if (debug_log_file_global) { fprintf(debug_log_file_global, "ffmpeg_mux_get_extra_data: start. has_video=%d, tracks=%d\n", ffm->params.has_video, ffm->params.tracks); fflush(debug_log_file_global); }
+
 	if (ffm->params.has_video) {
 		if (!ffmpeg_mux_get_header(ffm)) {
+			if (debug_log_file_global) { fprintf(debug_log_file_global, "ffmpeg_mux_get_extra_data: video header failed\n"); fflush(debug_log_file_global); }
 			return false;
 		}
 	}
 
 	for (int i = 0; i < ffm->params.tracks; i++) {
+		if (debug_log_file_global) { fprintf(debug_log_file_global, "ffmpeg_mux_get_extra_data: audio track %d\n", i); fflush(debug_log_file_global); }
 		if (!ffmpeg_mux_get_header(ffm)) {
+			if (debug_log_file_global) { fprintf(debug_log_file_global, "ffmpeg_mux_get_extra_data: audio header failed\n"); fflush(debug_log_file_global); }
 			return false;
 		}
 	}
 
+	if (debug_log_file_global) { fprintf(debug_log_file_global, "ffmpeg_mux_get_extra_data: success\n"); fflush(debug_log_file_global); }
 	return true;
 }
 
