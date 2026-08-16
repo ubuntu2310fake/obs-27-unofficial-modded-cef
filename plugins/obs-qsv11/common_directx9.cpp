@@ -5,7 +5,7 @@
 #include <initguid.h>
 #include <d3d9.h>
 #include <map>
-#include <atlbase.h>
+#include "com-helper.hpp"
 
 #define D3DFMT_NV12 (D3DFORMAT) MAKEFOURCC('N', 'V', '1', '2')
 #define D3DFMT_YV12 (D3DFORMAT) MAKEFOURCC('Y', 'V', '1', '2')

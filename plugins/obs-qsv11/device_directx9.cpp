@@ -10,7 +10,7 @@
 #include "device_directx9.h"
 // #include "igfx_s3dcontrol.h"
 
-#include "atlbase.h"
+#include "com-helper.hpp"
 
 // Macros
 #define MSDK_ZERO_MEMORY(VAR)                 \
