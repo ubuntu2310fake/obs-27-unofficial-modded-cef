@@ -18,6 +18,8 @@
 #include <io.h>
 #include <fcntl.h>
 #include <windows.h>
+#include <shellapi.h>
+HANDLE global_pipe_handle = NULL;
 #define inline __inline
 
 #endif
@@ -516,14 +518,10 @@ static inline size_t safe_read(void *vdata, size_t size)
 	uint8_t *data = vdata;
 	size_t total = size;
 
-#ifdef _WIN32
-	HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
-#endif
-
 	while (size > 0) {
 #ifdef _WIN32
 		DWORD in_size = 0;
-		BOOL ret = ReadFile(hStdin, data, (DWORD)size, &in_size, NULL);
+		BOOL ret = ReadFile(global_pipe_handle, data, (DWORD)size, &in_size, NULL);
 		if (!ret || in_size == 0) {
 			if (debug_log_file_global) {
 				fprintf(debug_log_file_global, "safe_read failed: ReadFile returned %d, in_size=%lu, GetLastError=%lu\n", ret, in_size, GetLastError());
@@ -554,9 +552,8 @@ static bool ffmpeg_mux_get_header(struct ffmpeg_mux *ffm)
 	struct ffm_packet_info info;
 	if (debug_log_file_global) { 
 #ifdef _WIN32
-		HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
-		DWORD fileType = GetFileType(hStdin);
-		fprintf(debug_log_file_global, "ffmpeg_mux_get_header: calling safe_read for info. GetStdHandle(STD_INPUT_HANDLE)=%p, GetFileType=%lu, _fileno(stdin)=%d\n", hStdin, fileType, _fileno(stdin)); 
+		DWORD fileType = GetFileType(global_pipe_handle);
+		fprintf(debug_log_file_global, "ffmpeg_mux_get_header: calling safe_read for info. global_pipe_handle=%p, GetFileType=%lu, _fileno(stdin)=%d\n", global_pipe_handle, fileType, _fileno(stdin)); 
 #else
 		fprintf(debug_log_file_global, "ffmpeg_mux_get_header: calling safe_read for info\n"); 
 #endif
@@ -893,9 +890,15 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 	int argc;
 	wchar_t **argv_w = CommandLineToArgvW(GetCommandLineW(), &argc);
 
+	STARTUPINFOW si = {0};
+	si.cb = sizeof(si);
+	GetStartupInfoW(&si);
+	global_pipe_handle = si.hStdInput;
+
 	debug_log_file_global = fopen("C:\\obs_mux_debug.txt", "w");
 	if (debug_log_file_global) {
-		fprintf(debug_log_file_global, "obs-ffmpeg-mux started (WIN32 GUI mode)\n");
+		fprintf(debug_log_file_global, "obs-ffmpeg-mux started (WIN32 GUI mode, using GetStartupInfoW)\n");
+		fprintf(debug_log_file_global, "si.dwFlags = 0x%08lX, si.hStdInput = %p\n", si.dwFlags, hStdin);
 		fflush(debug_log_file_global);
 	}
 
