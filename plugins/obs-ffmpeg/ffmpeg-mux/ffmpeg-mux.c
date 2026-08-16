@@ -886,12 +886,12 @@ int main(int argc, char *argv[])
 }
 
 #ifdef _WIN32
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
+int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
 {
 	(void)hInstance;
 	(void)hPrevInstance;
-	(void)lpCmdLine;
-	(void)nShowCmd;
+	(void)pCmdLine;
+	(void)nCmdShow;
 	return wmain(__argc, __wargv);
 }
 #endif
