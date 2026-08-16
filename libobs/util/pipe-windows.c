@@ -62,6 +62,16 @@ static inline bool create_process(const char *cmd_line, HANDLE stdin_handle,
 	flags = CREATE_NO_WINDOW;
 #endif
 
+	HANDLE dev_null = NULL;
+	if (!stdout_handle) {
+		dev_null = CreateFileW(L"NUL", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+		if (dev_null != INVALID_HANDLE_VALUE) {
+			SetHandleInformation(dev_null, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+			stdout_handle = dev_null;
+			si.hStdOutput = stdout_handle;
+		}
+	}
+
 	os_utf8_to_wcs_ptr(cmd_line, 0, &cmd_line_w);
 	if (cmd_line_w) {
 		success = !!CreateProcessW(NULL, cmd_line_w, NULL, NULL, true,
@@ -73,6 +83,10 @@ static inline bool create_process(const char *cmd_line, HANDLE stdin_handle,
 		}
 
 		bfree(cmd_line_w);
+	}
+
+	if (dev_null && dev_null != INVALID_HANDLE_VALUE) {
+		CloseHandle(dev_null);
 	}
 
 	return success;
