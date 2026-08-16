@@ -898,7 +898,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 	debug_log_file_global = fopen("C:\\obs_mux_debug.txt", "w");
 	if (debug_log_file_global) {
 		fprintf(debug_log_file_global, "obs-ffmpeg-mux started (WIN32 GUI mode, using GetStartupInfoW)\n");
-		fprintf(debug_log_file_global, "si.dwFlags = 0x%08lX, si.hStdInput = %p\n", si.dwFlags, hStdin);
+		fprintf(debug_log_file_global, "si.dwFlags = 0x%08lX, si.hStdInput = %p\n", si.dwFlags, global_pipe_handle);
 		fflush(debug_log_file_global);
 	}
 
