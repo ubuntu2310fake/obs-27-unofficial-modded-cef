@@ -152,11 +152,41 @@ mfxStatus QSV_Encoder_Internal::Open(qsv_param_t *pParams)
 {
 	mfxStatus sts = MFX_ERR_NONE;
 
-	if (m_bUseD3D11)
+	if (m_bUseD3D11) {
 		// Use D3D11 surface
 		sts = Initialize(m_impl, m_ver, &m_session, &m_mfxAllocator,
 				 &g_DX_Handle, false, false);
-	else if (m_bD3D9HACK)
+		if (sts != MFX_ERR_NONE) {
+			// D3D11 allocator failed (old driver on Win8.1) - fall back to D3D9
+			blog(LOG_WARNING,
+			     "[qsv encoder] D3D11 Initialize failed (%d), "
+			     "falling back to D3D9 hack",
+			     (int)sts);
+			m_bUseD3D11 = false;
+			m_bD3D9HACK = true;
+
+			// Re-init MFX session with D3D9 impl
+			mfxVersion ver = m_ver;
+			mfxIMPL d3d9impl = MFX_IMPL_HARDWARE_ANY | MFX_IMPL_VIA_D3D9;
+			mfxStatus sts2 = m_session.Init(d3d9impl, &ver);
+			if (sts2 == MFX_ERR_NONE) {
+				m_session.Close();
+				m_impl = d3d9impl;
+				sts = Initialize(m_impl, m_ver, &m_session,
+						 &m_mfxAllocator,
+						 &g_DX_Handle, false, true);
+			}
+			if (sts != MFX_ERR_NONE) {
+				// D3D9 also failed, try system memory
+				blog(LOG_WARNING,
+				     "[qsv encoder] D3D9 Initialize failed (%d), "
+				     "falling back to system memory",
+				     (int)sts);
+				m_bD3D9HACK = false;
+				sts = Initialize(m_impl, m_ver, &m_session, NULL);
+			}
+		}
+	} else if (m_bD3D9HACK)
 		// Use hack
 		sts = Initialize(m_impl, m_ver, &m_session, &m_mfxAllocator,
 				 &g_DX_Handle, false, true);
