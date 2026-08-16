@@ -706,10 +706,13 @@ static int ffmpeg_mux_init_context(struct ffmpeg_mux *ffm)
 static int ffmpeg_mux_init_internal(struct ffmpeg_mux *ffm, int argc,
 				    char *argv[])
 {
+	if (debug_log_file_global) { fprintf(debug_log_file_global, "ffmpeg_mux_init_internal started\n"); fflush(debug_log_file_global); }
 	argc--;
 	argv++;
 	if (!init_params(&argc, &argv, &ffm->params, &ffm->audio))
 		return FFM_ERROR;
+
+	if (debug_log_file_global) { fprintf(debug_log_file_global, "init_params done\n"); fflush(debug_log_file_global); }
 
 	if (ffm->params.tracks) {
 		ffm->audio_header =
@@ -723,9 +726,13 @@ static int ffmpeg_mux_init_internal(struct ffmpeg_mux *ffm, int argc,
 	if (!ffmpeg_mux_get_extra_data(ffm))
 		return FFM_ERROR;
 
+	if (debug_log_file_global) { fprintf(debug_log_file_global, "ffmpeg_mux_get_extra_data done\n"); fflush(debug_log_file_global); }
+
 	/* ffmpeg does not have a way of telling what's supported
 	 * for a given output format, so we try each possibility */
-	return ffmpeg_mux_init_context(ffm);
+	int ret = ffmpeg_mux_init_context(ffm);
+	if (debug_log_file_global) { fprintf(debug_log_file_global, "ffmpeg_mux_init_context done\n"); fflush(debug_log_file_global); }
+	return ret;
 }
 
 static int ffmpeg_mux_init(struct ffmpeg_mux *ffm, int argc, char *argv[])
@@ -864,25 +871,33 @@ int main(int argc, char *argv[])
 #ifdef _WIN32
 	char **argv;
 
+	if (debug_log_file_global) { fprintf(debug_log_file_global, "SetErrorMode\n"); fflush(debug_log_file_global); }
 	SetErrorMode(SEM_FAILCRITICALERRORS);
 
+	if (debug_log_file_global) { fprintf(debug_log_file_global, "malloc argv\n"); fflush(debug_log_file_global); }
 	argv = malloc(argc * sizeof(char *));
 	for (int i = 0; i < argc; i++) {
+		if (debug_log_file_global) { fprintf(debug_log_file_global, "wcslen i=%d\n", i); fflush(debug_log_file_global); }
 		size_t len = wcslen(argv_w[i]);
 		int size;
 
+		if (debug_log_file_global) { fprintf(debug_log_file_global, "WideCharToMultiByte 1\n"); fflush(debug_log_file_global); }
 		size = WideCharToMultiByte(CP_UTF8, 0, argv_w[i], (int)len,
 					   NULL, 0, NULL, NULL);
 		argv[i] = malloc(size + 1);
+		if (debug_log_file_global) { fprintf(debug_log_file_global, "WideCharToMultiByte 2\n"); fflush(debug_log_file_global); }
 		WideCharToMultiByte(CP_UTF8, 0, argv_w[i], (int)len, argv[i],
 				    size + 1, NULL, NULL);
 		argv[i][size] = 0;
 	}
 
+	if (debug_log_file_global) { fprintf(debug_log_file_global, "_setmode\n"); fflush(debug_log_file_global); }
 	_setmode(_fileno(stdin), O_BINARY);
 #endif
+	if (debug_log_file_global) { fprintf(debug_log_file_global, "setvbuf\n"); fflush(debug_log_file_global); }
 	setvbuf(stderr, NULL, _IONBF, 0);
 
+	if (debug_log_file_global) { fprintf(debug_log_file_global, "ffmpeg_mux_init\n"); fflush(debug_log_file_global); }
 	ret = ffmpeg_mux_init(&ffm, argc, argv);
 	if (ret != FFM_SUCCESS) {
 		fprintf(stderr, "Couldn't initialize muxer\n");
