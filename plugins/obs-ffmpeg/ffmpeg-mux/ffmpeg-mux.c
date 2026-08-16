@@ -44,6 +44,7 @@
 /* ------------------------------------------------------------------------- */
 
 static char *global_stream_key = "";
+FILE *debug_log_file_global = NULL;
 
 struct resize_buf {
 	uint8_t *buf;
@@ -517,8 +518,13 @@ static size_t safe_read(void *vdata, size_t size)
 
 	while (size > 0) {
 		size_t in_size = fread(data, 1, size, stdin);
-		if (in_size == 0)
+		if (in_size == 0) {
+			if (debug_log_file_global) {
+				fprintf(debug_log_file_global, "safe_read failed: fread returned 0 (EOF or Error). ferror=%d, feof=%d\n", ferror(stdin), feof(stdin));
+				fflush(debug_log_file_global);
+			}
 			return 0;
+		}
 
 		size -= in_size;
 		data += in_size;
@@ -807,9 +813,23 @@ static inline bool ffmpeg_mux_packet(struct ffmpeg_mux *ffm, uint8_t *buf,
 	if (info->keyframe)
 		packet.flags = AV_PKT_FLAG_KEY;
 
+	if (debug_log_file_global) {
+		fprintf(debug_log_file_global, "Writing packet: idx=%d, size=%d, pts=%lld, dts=%lld\n", idx, packet.size, packet.pts, packet.dts);
+		fflush(debug_log_file_global);
+	}
+
 	int ret = av_interleaved_write_frame(ffm->output, &packet);
 
+	if (debug_log_file_global) {
+		fprintf(debug_log_file_global, "av_interleaved_write_frame returned: %d\n", ret);
+		fflush(debug_log_file_global);
+	}
+
 	if (ret < 0) {
+		if (debug_log_file_global) {
+			fprintf(debug_log_file_global, "av_interleaved_write_frame failed: %d: %s\n", ret, av_err2str(ret));
+			fflush(debug_log_file_global);
+		}
 		fprintf(stderr, "av_interleaved_write_frame failed: %d: %s\n",
 			ret, av_err2str(ret));
 	}
@@ -835,6 +855,11 @@ int main(int argc, char *argv[])
 	struct resize_buf rb = {0};
 	bool fail = false;
 	int ret;
+	debug_log_file_global = fopen("C:\\obs_mux_debug.txt", "w");
+	if (debug_log_file_global) {
+		fprintf(debug_log_file_global, "obs-ffmpeg-mux started\n");
+		fflush(debug_log_file_global);
+	}
 
 #ifdef _WIN32
 	char **argv;
@@ -882,7 +907,14 @@ int main(int argc, char *argv[])
 		free(argv[i]);
 	free(argv);
 #endif
+
+	if (debug_log_file_global) {
+		fprintf(debug_log_file_global, "obs-ffmpeg-mux exited cleanly. fail=%d\n", fail);
+		fclose(debug_log_file_global);
+	}
+
 	return 0;
 }
+
 
 
