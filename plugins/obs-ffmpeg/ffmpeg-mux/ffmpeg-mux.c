@@ -888,50 +888,48 @@ static inline bool ffmpeg_mux_packet(struct ffmpeg_mux *ffm, uint8_t *buf,
 /* ------------------------------------------------------------------------- */
 
 #ifdef _WIN32
-int wmain(int argc, wchar_t *argv_w[])
-#else
-int main(int argc, char *argv[])
-#endif
+int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
 {
-	struct ffm_packet_info info = {0};
-	struct ffmpeg_mux ffm = {0};
-	struct resize_buf rb = {0};
-	bool fail = false;
-	int ret;
+	int argc;
+	wchar_t **argv_w = CommandLineToArgvW(GetCommandLineW(), &argc);
+
 	debug_log_file_global = fopen("C:\\obs_mux_debug.txt", "w");
 	if (debug_log_file_global) {
-		fprintf(debug_log_file_global, "obs-ffmpeg-mux started\n");
+		fprintf(debug_log_file_global, "obs-ffmpeg-mux started (WIN32 GUI mode)\n");
 		fflush(debug_log_file_global);
 	}
 
-#ifdef _WIN32
 	char **argv;
 
-	if (debug_log_file_global) { fprintf(debug_log_file_global, "SetErrorMode\n"); fflush(debug_log_file_global); }
 	SetErrorMode(SEM_FAILCRITICALERRORS);
 
-	if (debug_log_file_global) { fprintf(debug_log_file_global, "malloc argv\n"); fflush(debug_log_file_global); }
 	argv = malloc(argc * sizeof(char *));
 	for (int i = 0; i < argc; i++) {
-		if (debug_log_file_global) { fprintf(debug_log_file_global, "wcslen i=%d\n", i); fflush(debug_log_file_global); }
 		size_t len = wcslen(argv_w[i]);
 		int size;
 
-		if (debug_log_file_global) { fprintf(debug_log_file_global, "WideCharToMultiByte 1\n"); fflush(debug_log_file_global); }
 		size = WideCharToMultiByte(CP_UTF8, 0, argv_w[i], (int)len,
 					   NULL, 0, NULL, NULL);
 		argv[i] = malloc(size + 1);
-		if (debug_log_file_global) { fprintf(debug_log_file_global, "WideCharToMultiByte 2\n"); fflush(debug_log_file_global); }
 		WideCharToMultiByte(CP_UTF8, 0, argv_w[i], (int)len, argv[i],
 				    size + 1, NULL, NULL);
 		argv[i][size] = 0;
 	}
 
-	if (debug_log_file_global) { fprintf(debug_log_file_global, "_setmode\n"); fflush(debug_log_file_global); }
-	_setmode(_fileno(stdin), O_BINARY);
-#endif
-	if (debug_log_file_global) { fprintf(debug_log_file_global, "setvbuf\n"); fflush(debug_log_file_global); }
+	LocalFree(argv_w);
+
+	int ret;
+#else
+int main(int argc, char *argv[])
+{
+	int ret;
 	setvbuf(stderr, NULL, _IONBF, 0);
+#endif
+
+	struct ffm_packet_info info = {0};
+	struct ffmpeg_mux ffm = {0};
+	struct resize_buf rb = {0};
+	bool fail = false;
 
 	if (debug_log_file_global) { fprintf(debug_log_file_global, "ffmpeg_mux_init\n"); fflush(debug_log_file_global); }
 	ret = ffmpeg_mux_init(&ffm, argc, argv);
