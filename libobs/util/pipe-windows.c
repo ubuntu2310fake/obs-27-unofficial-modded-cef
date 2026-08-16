@@ -42,9 +42,13 @@ static bool create_pipe(HANDLE *input, HANDLE *output)
 	return true;
 }
 
+/* Creates a process. On Windows 8.1 STARTF_USESTDHANDLES is silently
+ * stripped for GUI subprocesses, so we duplicate the stdin handle into the
+ * child's process space and append "--pipe-handle <value>" to cmd_line.
+ * The child reads this argument and uses it directly. */
 static inline bool create_process(const char *cmd_line, HANDLE stdin_handle,
 				  HANDLE stdout_handle, HANDLE stderr_handle,
-				  HANDLE *process)
+				  HANDLE *process, HANDLE *out_dup_stdin)
 {
 	PROCESS_INFORMATION pi = {0};
 	wchar_t *cmd_line_w = NULL;
@@ -52,41 +56,119 @@ static inline bool create_process(const char *cmd_line, HANDLE stdin_handle,
 	bool success = false;
 
 	si.cb = sizeof(si);
-	si.dwFlags = STARTF_USESTDHANDLES | STARTF_FORCEOFFFEEDBACK;
-	si.hStdInput = stdin_handle;
-	si.hStdOutput = stdout_handle;
-	si.hStdError = stderr_handle;
 
-	DWORD flags = 0;
+	DWORD flags = CREATE_SUSPENDED;
 #ifndef SHOW_SUBPROCESSES
-	flags = CREATE_NO_WINDOW;
+	flags |= CREATE_NO_WINDOW;
 #endif
-
-	HANDLE dev_null = NULL;
-	if (!stdout_handle) {
-		dev_null = CreateFileW(L"NUL", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
-		if (dev_null != INVALID_HANDLE_VALUE) {
-			SetHandleInformation(dev_null, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-			stdout_handle = dev_null;
-			si.hStdOutput = stdout_handle;
-		}
-	}
 
 	os_utf8_to_wcs_ptr(cmd_line, 0, &cmd_line_w);
 	if (cmd_line_w) {
-		success = !!CreateProcessW(NULL, cmd_line_w, NULL, NULL, true,
+		success = !!CreateProcessW(NULL, cmd_line_w, NULL, NULL, FALSE,
 					   flags, NULL, NULL, &si, &pi);
-
-		if (success) {
-			*process = pi.hProcess;
-			CloseHandle(pi.hThread);
-		}
-
 		bfree(cmd_line_w);
 	}
 
-	if (dev_null && dev_null != INVALID_HANDLE_VALUE) {
+	if (!success)
+		return false;
+
+	/* Duplicate stdin_handle into the child process so handle value is
+	 * valid in child's address space even when inheritance is disabled. */
+	HANDLE dup = NULL;
+	if (stdin_handle) {
+		DuplicateHandle(GetCurrentProcess(), stdin_handle,
+				pi.hProcess, &dup,
+				0, FALSE, DUPLICATE_SAME_ACCESS);
+	}
+
+	/* Also duplicate stderr into child */
+	HANDLE dup_err = NULL;
+	if (stderr_handle) {
+		DuplicateHandle(GetCurrentProcess(), stderr_handle,
+				pi.hProcess, &dup_err,
+				0, FALSE, DUPLICATE_SAME_ACCESS);
+	}
+
+	/* Append --pipe-handle and --pipe-handle-err to child's env block is
+	 * not feasible; instead we restart child with augmented command line. */
+
+	/* Build new command line with handle arguments.
+	 * We need to terminate the suspended process and restart with args. */
+	TerminateProcess(pi.hProcess, 0);
+	CloseHandle(pi.hThread);
+	CloseHandle(pi.hProcess);
+
+	/* Close duplicated handles that are now orphaned */
+	if (dup) CloseHandle(dup);
+	if (dup_err) CloseHandle(dup_err);
+
+	/* Duplicate stdin into OUR process (inheritable) so child can
+	 * inherit it the normal way — but we ALSO pass it as --pipe-handle */
+	HANDLE inh_stdin = NULL;
+	if (stdin_handle) {
+		DuplicateHandle(GetCurrentProcess(), stdin_handle,
+				GetCurrentProcess(), &inh_stdin,
+				0, TRUE, DUPLICATE_SAME_ACCESS);
+	}
+	HANDLE inh_stderr = NULL;
+	if (stderr_handle) {
+		DuplicateHandle(GetCurrentProcess(), stderr_handle,
+				GetCurrentProcess(), &inh_stderr,
+				0, TRUE, DUPLICATE_SAME_ACCESS);
+	}
+
+	/* Build augmented command line with --pipe-handle <handle_value>
+	 * and --pipe-handle-err <stderr_handle_value> */
+	char new_cmd[4096];
+	if (inh_stdin) {
+		snprintf(new_cmd, sizeof(new_cmd), "%s --pipe-handle %llu --pipe-handle-err %llu",
+			 cmd_line,
+			 (unsigned long long)(uintptr_t)inh_stdin,
+			 (unsigned long long)(uintptr_t)inh_stderr);
+	} else {
+		snprintf(new_cmd, sizeof(new_cmd), "%s", cmd_line);
+	}
+
+	wchar_t *new_cmd_w = NULL;
+	os_utf8_to_wcs_ptr(new_cmd, 0, &new_cmd_w);
+
+	/* Setup STARTUPINFO with inheritable handles via STARTF_USESTDHANDLES.
+	 * We provide NUL for stdout. This may or may not work on Win8.1, but
+	 * the child will also have --pipe-handle as a fallback. */
+	HANDLE dev_null = CreateFileW(L"NUL", GENERIC_WRITE,
+					FILE_SHARE_READ | FILE_SHARE_WRITE,
+					NULL, OPEN_EXISTING, 0, NULL);
+	HANDLE inh_null = INVALID_HANDLE_VALUE;
+	if (dev_null != INVALID_HANDLE_VALUE) {
+		DuplicateHandle(GetCurrentProcess(), dev_null,
+				GetCurrentProcess(), &inh_null,
+				0, TRUE, DUPLICATE_SAME_ACCESS);
 		CloseHandle(dev_null);
+	}
+
+	STARTUPINFOW si2 = {0};
+	si2.cb = sizeof(si2);
+	si2.dwFlags = STARTF_USESTDHANDLES | STARTF_FORCEOFFFEEDBACK;
+	si2.hStdInput  = inh_stdin  ? inh_stdin  : NULL;
+	si2.hStdOutput = (inh_null != INVALID_HANDLE_VALUE) ? inh_null : NULL;
+	si2.hStdError  = inh_stderr ? inh_stderr : NULL;
+
+	PROCESS_INFORMATION pi2 = {0};
+	success = false;
+	if (new_cmd_w) {
+		success = !!CreateProcessW(NULL, new_cmd_w, NULL, NULL, TRUE,
+					   (flags & ~CREATE_SUSPENDED),
+					   NULL, NULL, &si2, &pi2);
+		bfree(new_cmd_w);
+	}
+
+	if (inh_null != INVALID_HANDLE_VALUE) CloseHandle(inh_null);
+	if (inh_stdin) CloseHandle(inh_stdin);
+	if (inh_stderr) CloseHandle(inh_stderr);
+
+	if (success) {
+		*process = pi2.hProcess;
+		CloseHandle(pi2.hThread);
 	}
 
 	return success;
@@ -132,7 +214,7 @@ os_process_pipe_t *os_process_pipe_create(const char *cmd_line,
 
 	success = create_process(cmd_line, read_pipe ? NULL : input,
 				 read_pipe ? output : NULL, err_output,
-				 &process);
+				 &process, NULL);
 	if (!success) {
 		goto error;
 	}

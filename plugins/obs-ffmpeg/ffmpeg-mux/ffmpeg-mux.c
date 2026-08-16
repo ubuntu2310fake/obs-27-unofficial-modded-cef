@@ -890,15 +890,15 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 	int argc;
 	wchar_t **argv_w = CommandLineToArgvW(GetCommandLineW(), &argc);
 
-	STARTUPINFOW si = {0};
-	si.cb = sizeof(si);
-	GetStartupInfoW(&si);
-	global_pipe_handle = si.hStdInput;
-
 	debug_log_file_global = fopen("C:\\obs_mux_debug.txt", "w");
 	if (debug_log_file_global) {
-		fprintf(debug_log_file_global, "obs-ffmpeg-mux started (WIN32 GUI mode, using GetStartupInfoW)\n");
-		fprintf(debug_log_file_global, "si.dwFlags = 0x%08lX, si.hStdInput = %p\n", si.dwFlags, global_pipe_handle);
+		fprintf(debug_log_file_global, "obs-ffmpeg-mux started (WIN32 GUI mode, cmd pipe-handle strategy)\n");
+		fprintf(debug_log_file_global, "argc=%d\n", argc);
+		for (int i = 0; i < argc; i++) {
+			char buf[256];
+			WideCharToMultiByte(CP_UTF8, 0, argv_w[i], -1, buf, sizeof(buf), NULL, NULL);
+			fprintf(debug_log_file_global, "  argv[%d] = %s\n", i, buf);
+		}
 		fflush(debug_log_file_global);
 	}
 
@@ -920,6 +920,43 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 	}
 
 	LocalFree(argv_w);
+
+	/* Scan for --pipe-handle passed by the parent process.
+	 * This is the reliable way to get the pipe handle on Windows 8.1
+	 * where STARTF_USESTDHANDLES is silently stripped for GUI processes. */
+	for (int i = 1; i < argc - 1; i++) {
+		if (strcmp(argv[i], "--pipe-handle") == 0) {
+			unsigned long long val = strtoull(argv[i + 1], NULL, 10);
+			global_pipe_handle = (HANDLE)(uintptr_t)val;
+			if (debug_log_file_global) {
+				fprintf(debug_log_file_global, "Found --pipe-handle arg: %llu -> %p\n",
+					val, global_pipe_handle);
+				fflush(debug_log_file_global);
+			}
+		}
+	}
+
+	/* If we still have no handle, try GetStartupInfoW as last resort */
+	if (!global_pipe_handle) {
+		STARTUPINFOW si2 = {0};
+		si2.cb = sizeof(si2);
+		GetStartupInfoW(&si2);
+		if ((si2.dwFlags & STARTF_USESTDHANDLES) && si2.hStdInput) {
+			global_pipe_handle = si2.hStdInput;
+			if (debug_log_file_global) {
+				fprintf(debug_log_file_global, "Fallback to GetStartupInfoW: hStdInput=%p\n",
+					global_pipe_handle);
+				fflush(debug_log_file_global);
+			}
+		}
+	}
+
+	if (debug_log_file_global) {
+		DWORD fileType = GetFileType(global_pipe_handle);
+		fprintf(debug_log_file_global, "Final global_pipe_handle=%p, GetFileType=%lu\n",
+			global_pipe_handle, fileType);
+		fflush(debug_log_file_global);
+	}
 
 	int ret;
 #else
