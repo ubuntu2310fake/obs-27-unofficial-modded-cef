@@ -203,6 +203,24 @@ mfxStatus QSV_Encoder_Internal::Open(qsv_param_t *pParams)
 
 	InitParams(pParams);
 
+	blog(LOG_INFO, "[qsv encoder] Open: mfx params -> CodecId=0x%08X, TargetUsage=%d, CodecProfile=%d, RateControl=%d, TargetKbps=%d, FrameRate=%d/%d, FourCC=0x%08X, ChromaFormat=%d, PicStruct=%d, Width=%d, Height=%d, CropW=%d, CropH=%d, IOPattern=%d, AsyncDepth=%d",
+	     m_mfxEncParams.mfx.CodecId,
+	     m_mfxEncParams.mfx.TargetUsage,
+	     m_mfxEncParams.mfx.CodecProfile,
+	     m_mfxEncParams.mfx.RateControlMethod,
+	     m_mfxEncParams.mfx.TargetKbps,
+	     m_mfxEncParams.mfx.FrameInfo.FrameRateExtN,
+	     m_mfxEncParams.mfx.FrameInfo.FrameRateExtD,
+	     m_mfxEncParams.mfx.FrameInfo.FourCC,
+	     m_mfxEncParams.mfx.FrameInfo.ChromaFormat,
+	     m_mfxEncParams.mfx.FrameInfo.PicStruct,
+	     m_mfxEncParams.mfx.FrameInfo.Width,
+	     m_mfxEncParams.mfx.FrameInfo.Height,
+	     m_mfxEncParams.mfx.FrameInfo.CropW,
+	     m_mfxEncParams.mfx.FrameInfo.CropH,
+	     m_mfxEncParams.IOPattern,
+	     m_mfxEncParams.AsyncDepth);
+
 	blog(LOG_INFO, "[qsv encoder] Open: calling Query...");
 	sts = m_pmfxENC->Query(&m_mfxEncParams, &m_mfxEncParams);
 	blog(LOG_INFO, "[qsv encoder] Query sts = %d", (int)sts);
@@ -404,7 +422,9 @@ mfxStatus QSV_Encoder_Internal::AllocateSurfaces()
 	// Query number of required surfaces for encoder
 	mfxFrameAllocRequest EncRequest;
 	memset(&EncRequest, 0, sizeof(EncRequest));
+	blog(LOG_INFO, "[qsv encoder] AllocateSurfaces: calling QueryIOSurf...");
 	mfxStatus sts = m_pmfxENC->QueryIOSurf(&m_mfxEncParams, &EncRequest);
+	blog(LOG_INFO, "[qsv encoder] QueryIOSurf sts = %d, NumFrameSuggested = %d", (int)sts, EncRequest.NumFrameSuggested);
 	MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
 
 	EncRequest.Type |= WILL_WRITE;
@@ -414,9 +434,12 @@ mfxStatus QSV_Encoder_Internal::AllocateSurfaces()
 
 	// Allocate required surfaces
 	if (m_bUseD3D11 || m_bD3D9HACK) {
+		blog(LOG_INFO, "[qsv encoder] AllocateSurfaces: calling m_mfxAllocator.Alloc...");
 		sts = m_mfxAllocator.Alloc(m_mfxAllocator.pthis, &EncRequest,
 					   &m_mfxResponse);
+		blog(LOG_INFO, "[qsv encoder] m_mfxAllocator.Alloc sts = %d", (int)sts);
 		MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+
 
 		m_nSurfNum = m_mfxResponse.NumFrameActual;
 
