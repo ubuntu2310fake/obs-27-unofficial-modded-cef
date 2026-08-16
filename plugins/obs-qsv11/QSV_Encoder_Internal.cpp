@@ -206,11 +206,15 @@ mfxStatus QSV_Encoder_Internal::Open(qsv_param_t *pParams)
 	blog(LOG_INFO, "[qsv encoder] Open: calling Query...");
 	sts = m_pmfxENC->Query(&m_mfxEncParams, &m_mfxEncParams);
 	blog(LOG_INFO, "[qsv encoder] Query sts = %d", (int)sts);
-	MSDK_IGNORE_MFX_STS(sts, MFX_WRN_INCOMPATIBLE_VIDEO_PARAM);
-	if (sts != MFX_ERR_NONE) {
-		blog(LOG_WARNING, "[qsv encoder] Query failed: %d", (int)sts);
-		return sts;
+	if (sts != MFX_ERR_NONE && sts != MFX_WRN_INCOMPATIBLE_VIDEO_PARAM) {
+		blog(LOG_WARNING, "[qsv encoder] Query failed (%d), trying Query without ExtParam...", (int)sts);
+		m_mfxEncParams.ExtParam = NULL;
+		m_mfxEncParams.NumExtParam = 0;
+		sts = m_pmfxENC->Query(&m_mfxEncParams, &m_mfxEncParams);
+		blog(LOG_INFO, "[qsv encoder] Query without ExtParam sts = %d", (int)sts);
 	}
+	MSDK_IGNORE_MFX_STS(sts, MFX_WRN_INCOMPATIBLE_VIDEO_PARAM);
+
 
 	blog(LOG_INFO, "[qsv encoder] Open: calling AllocateSurfaces...");
 	sts = AllocateSurfaces();
@@ -381,10 +385,14 @@ bool QSV_Encoder_Internal::InitParams(qsv_param_t *pParams)
 		m_mfxEncParams.IOPattern = MFX_IOPATTERN_IN_SYSTEM_MEMORY;
 
 	mfxStatus sts = m_pmfxENC->Query(&m_mfxEncParams, &m_mfxEncParams);
-	if (sts == MFX_ERR_UNSUPPORTED || sts == MFX_ERR_UNDEFINED_BEHAVIOR) {
+	if (sts != MFX_ERR_NONE) {
 		if (m_mfxEncParams.mfx.LowPower == MFX_CODINGOPTION_ON) {
 			m_mfxEncParams.mfx.LowPower = MFX_CODINGOPTION_OFF;
 			m_co2.LookAheadDepth = 0;
+		}
+		if (sts == MFX_ERR_NULL_PTR) {
+			m_mfxEncParams.ExtParam = NULL;
+			m_mfxEncParams.NumExtParam = 0;
 		}
 	}
 
