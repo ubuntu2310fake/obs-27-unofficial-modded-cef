@@ -152,12 +152,13 @@ mfxStatus QSV_Encoder_Internal::Open(qsv_param_t *pParams)
 {
 	mfxStatus sts = MFX_ERR_NONE;
 
+	blog(LOG_INFO, "[qsv encoder] Open: calling Initialize...");
 	if (m_bUseD3D11) {
 		// Use D3D11 surface
 		sts = Initialize(m_impl, m_ver, &m_session, &m_mfxAllocator,
 				 &g_DX_Handle, false, false);
+		blog(LOG_INFO, "[qsv encoder] D3D11 Initialize sts = %d", (int)sts);
 		if (sts != MFX_ERR_NONE) {
-			// D3D11 allocator failed (old driver on Win8.1) - fall back to D3D9
 			blog(LOG_WARNING,
 			     "[qsv encoder] D3D11 Initialize failed (%d), "
 			     "falling back to D3D9 hack",
@@ -165,7 +166,6 @@ mfxStatus QSV_Encoder_Internal::Open(qsv_param_t *pParams)
 			m_bUseD3D11 = false;
 			m_bD3D9HACK = true;
 
-			// Re-init MFX session with D3D9 impl
 			mfxVersion ver = m_ver;
 			mfxIMPL d3d9impl = MFX_IMPL_HARDWARE_ANY | MFX_IMPL_VIA_D3D9;
 			mfxStatus sts2 = m_session.Init(d3d9impl, &ver);
@@ -177,7 +177,6 @@ mfxStatus QSV_Encoder_Internal::Open(qsv_param_t *pParams)
 						 &g_DX_Handle, false, true);
 			}
 			if (sts != MFX_ERR_NONE) {
-				// D3D9 also failed, try system memory
 				blog(LOG_WARNING,
 				     "[qsv encoder] D3D9 Initialize failed (%d), "
 				     "falling back to system memory",
@@ -186,34 +185,64 @@ mfxStatus QSV_Encoder_Internal::Open(qsv_param_t *pParams)
 				sts = Initialize(m_impl, m_ver, &m_session, NULL);
 			}
 		}
-	} else if (m_bD3D9HACK)
-		// Use hack
+	} else if (m_bD3D9HACK) {
 		sts = Initialize(m_impl, m_ver, &m_session, &m_mfxAllocator,
 				 &g_DX_Handle, false, true);
-	else
+		blog(LOG_INFO, "[qsv encoder] D3D9 Initialize sts = %d", (int)sts);
+	} else {
 		sts = Initialize(m_impl, m_ver, &m_session, NULL);
+		blog(LOG_INFO, "[qsv encoder] SysMem Initialize sts = %d", (int)sts);
+	}
 
-	MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+	if (sts != MFX_ERR_NONE) {
+		blog(LOG_WARNING, "[qsv encoder] Initialize final failed: %d", (int)sts);
+		return sts;
+	}
 
 	m_pmfxENC = new MFXVideoENCODE(m_session);
 
 	InitParams(pParams);
 
+	blog(LOG_INFO, "[qsv encoder] Open: calling Query...");
 	sts = m_pmfxENC->Query(&m_mfxEncParams, &m_mfxEncParams);
+	blog(LOG_INFO, "[qsv encoder] Query sts = %d", (int)sts);
 	MSDK_IGNORE_MFX_STS(sts, MFX_WRN_INCOMPATIBLE_VIDEO_PARAM);
-	MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+	if (sts != MFX_ERR_NONE) {
+		blog(LOG_WARNING, "[qsv encoder] Query failed: %d", (int)sts);
+		return sts;
+	}
 
+	blog(LOG_INFO, "[qsv encoder] Open: calling AllocateSurfaces...");
 	sts = AllocateSurfaces();
-	MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+	blog(LOG_INFO, "[qsv encoder] AllocateSurfaces sts = %d", (int)sts);
+	if (sts != MFX_ERR_NONE) {
+		blog(LOG_WARNING, "[qsv encoder] AllocateSurfaces failed: %d", (int)sts);
+		return sts;
+	}
 
+	blog(LOG_INFO, "[qsv encoder] Open: calling m_pmfxENC->Init...");
 	sts = m_pmfxENC->Init(&m_mfxEncParams);
-	MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+	blog(LOG_INFO, "[qsv encoder] m_pmfxENC->Init sts = %d", (int)sts);
+	if (sts != MFX_ERR_NONE) {
+		blog(LOG_WARNING, "[qsv encoder] m_pmfxENC->Init failed: %d", (int)sts);
+		return sts;
+	}
 
+	blog(LOG_INFO, "[qsv encoder] Open: calling GetVideoParam...");
 	sts = GetVideoParam();
-	MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+	blog(LOG_INFO, "[qsv encoder] GetVideoParam sts = %d", (int)sts);
+	if (sts != MFX_ERR_NONE) {
+		blog(LOG_WARNING, "[qsv encoder] GetVideoParam failed: %d", (int)sts);
+		return sts;
+	}
 
+	blog(LOG_INFO, "[qsv encoder] Open: calling InitBitstream...");
 	sts = InitBitstream();
-	MSDK_CHECK_RESULT(sts, MFX_ERR_NONE, sts);
+	blog(LOG_INFO, "[qsv encoder] InitBitstream sts = %d", (int)sts);
+	if (sts != MFX_ERR_NONE) {
+		blog(LOG_WARNING, "[qsv encoder] InitBitstream failed: %d", (int)sts);
+		return sts;
+	}
 
 	if (sts >= MFX_ERR_NONE) {
 		g_numEncodersOpen++;
