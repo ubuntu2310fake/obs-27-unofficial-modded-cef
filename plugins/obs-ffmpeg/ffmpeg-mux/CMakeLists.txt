@@ -14,7 +14,7 @@ set(obs-ffmpeg-mux_SOURCES
 set(obs-ffmpeg-mux_HEADERS
 	ffmpeg-mux.h)
 
-add_executable(obs-ffmpeg-mux
+add_executable(obs-ffmpeg-mux WIN32
 	${obs-ffmpeg-mux_SOURCES}
 	${obs-ffmpeg-mux_HEADERS})
 
